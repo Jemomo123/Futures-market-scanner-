@@ -3,6 +3,10 @@ CRYPTO FUTURES MARKET SCANNER
 Decision-support tool for expansion and reversion strategies
 NO AUTO-TRADING - Human judgment required for all entries
 MOBILE-OPTIMIZED INTERFACE
+
+UPDATED FEATURES:
+- BTC Market Regime analysis (15m, 1h, 4h)
+- Mutual exclusivity: Expansion always has priority over Reversion
 """
 
 import streamlit as st
@@ -74,6 +78,125 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df['sma_20'] = calculate_sma(df, 20)
     df['sma_100'] = calculate_sma(df, 100)
     return df
+
+def calculate_trend_score(df: pd.DataFrame) -> Dict:
+    """
+    Calculate trend score (0-4) for a timeframe
+    Returns score, direction, and state classification
+    """
+    if df is None or len(df) < 100:
+        return {'score': 0, 'state': 'Ranging', 'direction': None}
+    
+    latest_idx = len(df) - 1
+    latest = df.iloc[latest_idx]
+    
+    price = latest['close']
+    sma_20 = latest['sma_20']
+    sma_100 = latest['sma_100']
+    
+    score = 0
+    
+    # 1. SMA SEPARATION (1 point)
+    sma_distance_pct = abs(sma_20 - sma_100) / price * 100
+    if sma_distance_pct >= 1.5:
+        score += 1
+    
+    # 2. SMA SLOPE (1 point)
+    if latest_idx >= 5:
+        sma_100_5_ago = df.iloc[latest_idx - 5]['sma_100']
+        sma_100_slope_pct = abs((sma_100 - sma_100_5_ago) / sma_100_5_ago * 100)
+        if sma_100_slope_pct >= 0.2:
+            score += 1
+    
+    # 3. CROSS FREQUENCY (1 point)
+    crosses_30 = 0
+    if latest_idx >= 30:
+        lookback = df.iloc[latest_idx-30:latest_idx+1]
+        for i in range(len(lookback)-1):
+            curr = lookback.iloc[i+1]
+            prev = lookback.iloc[i]
+            if (prev['sma_20'] > prev['sma_100'] and curr['sma_20'] < curr['sma_100']) or \
+               (prev['sma_20'] < prev['sma_100'] and curr['sma_20'] > curr['sma_100']):
+                crosses_30 += 1
+        if crosses_30 == 0:
+            score += 1
+    
+    # 4. PRICE POSITION (1 point)
+    if latest_idx >= 5:
+        last_5 = df.iloc[latest_idx-4:latest_idx+1]
+        above_100 = sum(last_5['close'] > last_5['sma_100'])
+        below_100 = sum(last_5['close'] < last_5['sma_100'])
+        if above_100 == 5 or below_100 == 5:
+            score += 1
+    
+    # Determine direction
+    direction = 'UP' if price > sma_100 else 'DOWN'
+    
+    # Classify state
+    if score >= 3:
+        state = f"Trending {direction.title()}"
+    elif score == 2:
+        state = f"Transition {direction.title()}"
+    else:
+        state = "Ranging"
+    
+    return {
+        'score': score,
+        'state': state,
+        'direction': direction
+    }
+
+def get_btc_market_regime(exchange_name: str = 'gateio') -> Dict:
+    """
+    Analyze BTC/USDT market regime across multiple timeframes
+    Returns regime data for 15m, 1h, 4h and global bias
+    """
+    results = {
+        '15m': {'state': 'Data unavailable', 'score': 0},
+        '1h': {'state': 'Data unavailable', 'score': 0},
+        '4h': {'state': 'Data unavailable', 'score': 0},
+        'bias': 'Market data unavailable'
+    }
+    
+    try:
+        # Fetch BTC data for each timeframe
+        df_15m = fetch_ohlcv(exchange_name, 'BTC/USDT', '15m', limit=200)
+        df_1h = fetch_ohlcv(exchange_name, 'BTC/USDT', '1h', limit=200)
+        df_4h = fetch_ohlcv(exchange_name, 'BTC/USDT', '4h', limit=200)
+        
+        # Calculate indicators
+        if df_15m is not None:
+            df_15m = calculate_indicators(df_15m)
+            results['15m'] = calculate_trend_score(df_15m)
+        
+        if df_1h is not None:
+            df_1h = calculate_indicators(df_1h)
+            results['1h'] = calculate_trend_score(df_1h)
+        
+        if df_4h is not None:
+            df_4h = calculate_indicators(df_4h)
+            results['4h'] = calculate_trend_score(df_4h)
+        
+        # Generate global bias
+        state_1h = results['1h']['state']
+        state_4h = results['4h']['state']
+        state_15m = results['15m']['state']
+        
+        if 'Trending Up' in state_4h and 'Trending Up' in state_1h:
+            results['bias'] = "Favor LONG expansions"
+        elif 'Trending Down' in state_4h and 'Trending Down' in state_1h:
+            results['bias'] = "Favor SHORT expansions"
+        elif 'Ranging' in state_4h:
+            results['bias'] = "Market in macro range — expect fakeouts"
+        elif 'Ranging' in state_15m and 'Ranging' in state_1h and 'Ranging' in state_4h:
+            results['bias'] = "Range market — favor REVERSION trades"
+        else:
+            results['bias'] = "Mixed conditions — use discretion"
+        
+        return results
+        
+    except Exception as e:
+        return results
 
 def analyze_candle(row: pd.Series, df: pd.DataFrame, idx: int) -> Dict:
     body = abs(row['close'] - row['open'])
@@ -311,6 +434,11 @@ def calculate_conviction(signal_data: Dict) -> Tuple[str, str]:
         return 'C', f"Avoid: {', '.join(issues)}"
 
 def scan_symbol(exchange_name: str, symbol: str, timeframe: str, df_15m: pd.DataFrame) -> List[Dict]:
+    """
+    Scan a single symbol for all strategies
+    CRITICAL: Expansion has priority over Reversion (mutually exclusive)
+    Returns list of signals
+    """
     signals = []
     df = fetch_ohlcv(exchange_name, symbol, timeframe, limit=200)
     if df is None or len(df) < 100:
@@ -320,10 +448,16 @@ def scan_symbol(exchange_name: str, symbol: str, timeframe: str, df_15m: pd.Data
     row = df.iloc[idx]
     candle_data = analyze_candle(row, df, idx)
     candle_label = label_candle_type(candle_data)
+    
+    # Track if ANY expansion signal is found
+    expansion_found = False
+    
+    # EXPANSION STRATEGY - SQZ TRIGGER
     sqz_data = detect_sqz(df, idx)
     for direction in ['long', 'short']:
         expansion_check = check_expansion(df, idx, direction)
         if expansion_check['moving_away']:
+            expansion_found = True
             context_15m = analyze_15m_context(df_15m, direction)
             firewall = detect_firewall(df, idx, direction)
             liquidity = detect_liquidity_hole(df, idx, direction)
@@ -348,11 +482,14 @@ def scan_symbol(exchange_name: str, symbol: str, timeframe: str, df_15m: pd.Data
             signal['conviction'] = tier
             signal['reason'] = reason
             signals.append(signal)
+    
+    # EXPANSION STRATEGY - CROSSOVER TRIGGER
     crossover_dir = detect_crossover(df, idx)
     if crossover_dir:
         direction = 'long' if crossover_dir == 'bullish' else 'short'
         expansion_check = check_expansion(df, idx, direction)
         if expansion_check['moving_away']:
+            expansion_found = True
             context_15m = analyze_15m_context(df_15m, direction)
             firewall = detect_firewall(df, idx, direction)
             liquidity = detect_liquidity_hole(df, idx, direction)
@@ -377,33 +514,37 @@ def scan_symbol(exchange_name: str, symbol: str, timeframe: str, df_15m: pd.Data
             signal['conviction'] = tier
             signal['reason'] = reason
             signals.append(signal)
-    reversion = detect_reversion_setup(df, idx)
-    if reversion:
-        direction = reversion['direction']
-        context_15m = analyze_15m_context(df_15m, direction)
-        firewall = detect_firewall(df, idx, direction)
-        liquidity = detect_liquidity_hole(df, idx, direction)
-        signal = {
-            'symbol': symbol,
-            'exchange': exchange_name,
-            'strategy': 'Reversion',
-            'direction': direction.upper(),
-            'entry_timeframe': timeframe,
-            'trigger_type': 'Mean Reversion',
-            'candle_type': candle_label,
-            'sqz_status': 'N/A',
-            'expansion_status': reversion['status'],
-            'context_15m': context_15m['status'],
-            'firewall_status': firewall['status'],
-            'liquidity_status': liquidity['status'],
-            'choppiness': f"{reversion['crosses_50']} crosses in 50 bars",
-            'detected_at': datetime.now(),
-            'timeframe_minutes': TIMEFRAMES[timeframe]
-        }
-        tier, reason = calculate_conviction(signal)
-        signal['conviction'] = tier
-        signal['reason'] = reason
-        signals.append(signal)
+    
+    # REVERSION STRATEGY - ONLY IF NO EXPANSION
+    if not expansion_found:
+        reversion = detect_reversion_setup(df, idx)
+        if reversion:
+            direction = reversion['direction']
+            context_15m = analyze_15m_context(df_15m, direction)
+            firewall = detect_firewall(df, idx, direction)
+            liquidity = detect_liquidity_hole(df, idx, direction)
+            signal = {
+                'symbol': symbol,
+                'exchange': exchange_name,
+                'strategy': 'Reversion',
+                'direction': direction.upper(),
+                'entry_timeframe': timeframe,
+                'trigger_type': 'Mean Reversion',
+                'candle_type': candle_label,
+                'sqz_status': 'N/A',
+                'expansion_status': reversion['status'],
+                'context_15m': context_15m['status'],
+                'firewall_status': firewall['status'],
+                'liquidity_status': liquidity['status'],
+                'choppiness': f"{reversion['crosses_50']} crosses in 50 bars",
+                'detected_at': datetime.now(),
+                'timeframe_minutes': TIMEFRAMES[timeframe]
+            }
+            tier, reason = calculate_conviction(signal)
+            signal['conviction'] = tier
+            signal['reason'] = reason
+            signals.append(signal)
+    
     return signals
 
 def format_signal_age(signal: Dict) -> Tuple[int, bool]:
@@ -475,8 +616,29 @@ def main():
         layout="wide",
         initial_sidebar_state="collapsed"
     )
+    
     st.title("📊 Crypto Futures Scanner")
     st.caption("Decision-Support Tool • Human Judgment Required")
+    
+    # BTC MARKET REGIME BOX
+    with st.container():
+        st.subheader("BTC MARKET REGIME")
+        btc_regime = get_btc_market_regime('gateio')
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.text("15m:")
+            st.text(btc_regime['15m']['state'])
+        with col2:
+            st.text("1h:")
+            st.text(btc_regime['1h']['state'])
+        with col3:
+            st.text("4h:")
+            st.text(btc_regime['4h']['state'])
+        with col4:
+            st.text("Global Bias:")
+            st.text(btc_regime['bias'])
+        st.markdown("---")
+    
     with st.sidebar:
         st.header("⚙️ Settings")
         selected_exchanges = st.multiselect(
@@ -499,10 +661,13 @@ def main():
         st.markdown("---")
         st.markdown("**💡 If Binance blocked:**")
         st.markdown("Use Gate.io & MEXC or enable VPN")
+    
     if 'signals' not in st.session_state:
         st.session_state.signals = []
+    
     status_placeholder = st.empty()
     signals_placeholder = st.empty()
+    
     if st.button("🔄 Refresh Now") or True:
         all_signals = []
         working_exchanges = []
@@ -524,6 +689,7 @@ def main():
             status_placeholder.success(f"✅ Found {len(all_signals)} signals from {', '.join([e.upper() for e in working_exchanges])}")
         else:
             status_placeholder.error("❌ No exchanges accessible. Try Gate.io/MEXC or use VPN for Binance")
+    
     with signals_placeholder.container():
         if st.session_state.signals:
             sorted_signals = sorted(
@@ -536,6 +702,7 @@ def main():
             render_signals_table(sorted_signals)
         else:
             st.info("📱 Click 'Refresh Now' to start scanning")
+    
     time.sleep(refresh_interval)
     st.rerun()
 
