@@ -17,9 +17,10 @@ Step-by-step for traders who don't code.
 1. Go to https://www.python.org/downloads/
 2. Click "Download Python"
 3. Open downloaded file
-4. Follow steps
+4. Follow installation steps
 
 ### Verify
+Open terminal and type:
 ```bash
 python --version
 ```
@@ -33,21 +34,27 @@ Should show: `Python 3.12.x`
 Download ZIP from GitHub  
 Extract to Desktop
 
+Files you should have:
+- crypto_scanner.py
+- requirements.txt
+- README.md
+- INSTALL.md
+
 ---
 
 ## Step 3: Open Terminal
 
-**Windows:** Press `Win + R`, type `cmd`  
-**Mac:** Press `Cmd + Space`, type `terminal`
+**Windows:** Press `Win + R`, type `cmd`, press Enter  
+**Mac:** Press `Cmd + Space`, type `terminal`, press Enter
 
 ---
 
-## Step 4: Navigate to Folder
+## Step 4: Navigate to Scanner Folder
 ```bash
 cd Desktop/crypto-scanner
 ```
 
-Check files:
+Verify you're in the right place:
 ```bash
 dir
 ```
@@ -56,6 +63,8 @@ dir
 ls
 ```
 (Mac)
+
+Should list your files.
 
 ---
 
@@ -73,9 +82,9 @@ Wait for installation to complete.
 streamlit run crypto_scanner.py
 ```
 
-Browser opens automatically!
+Browser opens automatically with the scanner!
 
-If not, manually go to: `http://localhost:8501`
+If browser doesn't open, go to: `http://localhost:8501`
 
 ---
 
@@ -83,19 +92,46 @@ If not, manually go to: `http://localhost:8501`
 
 When scanner opens:
 
-1. **Check BTC Market Regime box at top**
-   - Shows current market conditions
-   - Guides your trading decisions
+### 1. Check BTC Market Regime (Top of Page)
+Shows current market conditions across timeframes
 
-2. **Click arrow (>) for settings**
-   - Exchanges: Select "gateio" and "mexc"
-   - Timeframe: Select "5m"
-   - Max symbols: Set to 10-20
-   - Refresh: Set to 60 seconds
+### 2. Open Settings (Click Arrow >)
+- Exchanges: Select "gateio" and "mexc"
+- Timeframes: Select "5m"
+- Max symbols: Set to 20
+- Refresh: Set to 60 seconds
 
-3. **Click "Refresh Now"**
+### 3. Click "Refresh Now"
 
-4. **Wait for signals** (1-2 minutes)
+### 4. Wait for Signals (1-2 minutes)
+
+Scanner will show:
+- Expansion signals (impulse moves)
+- Trend Continuation signals (TC20 pullbacks)
+- Reversion signals (trend exhaustion)
+
+---
+
+## Understanding Your First Signals
+
+**Expansion Signal Example:**
+```
+BTC/USDT | LONG
+GATEIO • Expansion • SQZ
+Conviction A+: Clean setup
+5m • 1 min ago
+```
+This means: Fresh breakout happening NOW
+
+**Trend Continuation Signal Example:**
+```
+ETH/USDT | SHORT
+MEXC • Trend Continuation • TC20
+First pullback to 20 SMA, 15.2 min after SQZ expansion
+Conviction A: Strong setup
+5m • 2 min ago
+```
+This means: Trend started 15 min ago, now pullback entry
 
 ---
 
@@ -103,10 +139,15 @@ When scanner opens:
 
 Scanner shows Network URL: `http://192.168.x.x:8501`
 
-On phone (same WiFi):
-1. Type that URL in browser
+**On Your Phone (Same WiFi):**
+1. Type that URL in mobile browser
 2. Scanner loads on phone
 3. Add to home screen for app-like experience
+
+**Perfect for:**
+- Monitoring while away from computer
+- Quick signal checks
+- Trading on the go
 
 ---
 
@@ -119,23 +160,50 @@ On phone (same WiFi):
 → Try: `python -m pip install -r requirements.txt`
 
 **Browser doesn't open**  
-→ Go to: `http://localhost:8501`
+→ Manually go to: `http://localhost:8501`
 
 **BTC regime shows "Data unavailable"**  
-→ Wait for data to load or check internet connection
+→ Wait 30 seconds, data is loading
+
+**No signals appearing**  
+→ Normal! Good setups are rare. Be patient.
 
 ---
 
-## Running Again
+## Running Scanner Again
 
 You only install once!
 
-**Next time:**
+**Every time after first install:**
 1. Open terminal
-2. `cd Desktop/crypto-scanner`
-3. `streamlit run crypto_scanner.py`
+2. Navigate: `cd Desktop/crypto-scanner`
+3. Run: `streamlit run crypto_scanner.py`
 
 Done!
+
+---
+
+## Tips for Success
+
+### Day 1-3: Learning Mode
+- Run scanner
+- Watch signals appear
+- Check each on your charts
+- DON'T trade yet
+- Learn the patterns
+
+### Day 4-7: Paper Trading
+- Take signals on paper
+- Track results
+- See which work best
+- Build confidence
+
+### Week 2+: Live Trading
+- Start with smallest size
+- Only A+ and A signals
+- Always visual confirmation
+- Use stop losses
+- Increase size slowly
 
 ---
 
